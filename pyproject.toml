@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "spark_calibration"
+version = "1.0.2"
+authors = [
+  { name="jaya", email="jaya.kommuru@meesho.com" },
+]
+description = "Calibratiing model scores/probabilites with pyspark dataframes"
+license = "Apache-2.0"
+readme = "README.md"
+requires-python = ">=3.7"
+dependencies = [
+    "pyspark>=3.2.1",
+    "numpy>=1.20.3",
+    "plotly>=5.9.0",
+    "scikit-learn>=1.0.2"
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/kjsr7/spark_calibration"
+"Bug Tracker" = "https://github.com/kjsr7/spark_calibration/issues"
