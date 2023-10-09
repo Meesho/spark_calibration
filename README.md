@@ -46,7 +46,7 @@ test_df = spark.read.parquet("s3://test/")
 test_df = bc.predict(test_df)
 ```
 
-### Plot the calibration curve
+### Plot the Calibration Curve
 
 Computes true, predicted probabilites (pre & post calibration) using quantile binning strategy with 50 bins and plots the calibration curve
 
@@ -55,7 +55,7 @@ plot_calibration_curve(test_df)
 ```
 
 
-### Pre & Post calibration classification metrics
+### Pre & Post Calibration Classification Metrics
 
 The test_df should have `score`, `prediction` & `label` columns. 
 The `display_classification_calib_metrics` functions displays `brier_score_loss`, `log_loss`, `area_under_PR_curve` and `area_under_ROC_curve`
