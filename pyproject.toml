@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "spark_calibration"
-version = "1.0.6"
+version = "1.0.7"
 authors = [
   { name="Jaya", email="jaya.kommuru@meesho.com"}
 ]
