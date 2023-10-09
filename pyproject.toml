@@ -4,10 +4,11 @@ build-backend = "hatchling.build"
 
 [project]
 name = "spark_calibration"
-version = "1.0.2"
+version = "1.0.6"
 authors = [
-  { name="jaya", email="jaya.kommuru@meesho.com" },
+  { name="Jaya", email="jaya.kommuru@meesho.com"}
 ]
+
 description = "Calibratiing model scores/probabilites with pyspark dataframes"
 license = "Apache-2.0"
 readme = "README.md"
@@ -25,5 +26,5 @@ classifiers = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/kjsr7/spark_calibration"
-"Bug Tracker" = "https://github.com/kjsr7/spark_calibration/issues"
+"Homepage" = "https://github.com/Meesho/spark_calibration"
+"Bug Tracker" = "https://github.com/Meesho/spark_calibration/issues"

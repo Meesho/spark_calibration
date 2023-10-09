@@ -19,7 +19,7 @@ def plot_calibration_curve(df: DataFrame):
             x=[0, 1],
             y=[0, 1],
             mode="lines",
-            name="Perfectly Calibrated",
+            name="Perfect Calibration Baseline (y=x)",
             line=dict(dash="dash"),
         )
     )
