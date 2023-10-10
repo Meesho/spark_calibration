@@ -2,7 +2,7 @@
 
 <img width="1069" alt="Screenshot 2023-10-09 at 4 20 38 PM" src="https://github.com/Meesho/spark_calibration/assets/102668625/4d45d9d9-601b-406b-8b8a-55be944d4019">
 
-This package provides a Betacal class which allows the user to fit the default beta calibration model and predict calibrated scores
+This package provides a Betacal class which allows the user to fit/train the default beta calibration model on pyspark dataframes and predict calibrated scores
 
 
 ## Setup
