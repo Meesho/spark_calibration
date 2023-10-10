@@ -47,7 +47,7 @@ def plot_calibration_curve(df: DataFrame):
     fig.update_layout(
         title=dict(text="Calibration Curve on test data (quantile bins)", x=0.5),
         xaxis_title="Mean Predicted Probability",
-        yaxis_title="Fraction of Positives",
+        yaxis_title="Actual Fraction of Positives",
     )
 
     fig.show()
