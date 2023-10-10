@@ -1,6 +1,7 @@
 # Model calibration with pyspark
 
-<img width="1069" alt="Screenshot 2023-10-09 at 4 20 38 PM" src="https://github.com/Meesho/spark_calibration/assets/102668625/4d45d9d9-601b-406b-8b8a-55be944d4019">
+<img width="1069" alt="Screenshot 2023-10-10 at 3 19 39 PM" src="https://github.com/Meesho/spark_calibration/assets/102668625/d66ad0c9-3501-4f15-a73f-9266f7d3ab4c">
+
 
 This package provides a Betacal class which allows the user to fit/train the default beta calibration model on pyspark dataframes and predict calibrated scores
 
@@ -81,4 +82,4 @@ Computes true, predicted probabilites (pre & post calibration) using quantile bi
 ```
 plot_calibration_curve(test_df)
 ```
-<img width="1069" alt="Screenshot 2023-10-09 at 4 20 38 PM" src="https://github.com/Meesho/spark_calibration/assets/102668625/4d45d9d9-601b-406b-8b8a-55be944d4019">
+<img width="1069" alt="Screenshot 2023-10-10 at 3 19 39 PM" src="https://github.com/Meesho/spark_calibration/assets/102668625/d66ad0c9-3501-4f15-a73f-9266f7d3ab4c">
