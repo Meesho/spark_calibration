@@ -18,7 +18,7 @@ pip install spark-calibration
 
 ### Training
 
-train_df should be a pyspark dataframe with `score` and `label` columns
+train_df should be a pyspark dataframe with `score` and `label` columns. In some tree-based models like LightGBM, the predicted `score` may fall outside the [0, 1] range and can even be negative. Please apply a sigmoid function to normalize the outputs accordingly.
 
 ```
 from spark_calibration import Betacal
