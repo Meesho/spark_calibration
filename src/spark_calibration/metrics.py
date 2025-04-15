@@ -65,3 +65,13 @@ def display_classification_calib_metrics(df: DataFrame):
     print(f"model roc_auc: {model_roc_auc}")
     print(f"calibrated model roc_auc: {iso_roc_auc}")
     print(f"delta: {round((iso_roc_auc/model_roc_auc - 1) * 100, 2)}%")
+    return {
+        "model brier score loss": model_bs,
+        "calibrated model brier score loss": iso_bs,
+        "model log loss": model_ll,
+        "calibrated model log loss": iso_ll,
+        "model auc pr": model_aucpr,
+        "calibrated model auc pr": iso_aucpr,
+        "model roc auc": model_roc_auc,
+        "calibrated model roc auc": iso_roc_auc,
+    }

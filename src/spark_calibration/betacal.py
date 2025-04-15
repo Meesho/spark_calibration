@@ -80,10 +80,10 @@ class Betacal:
                 "score2", -1 * F.log("score2")
             )
 
-            if self.a == 0:
+            if self.a == 0 or self.a == "0":
                 featurizer = VectorAssembler(inputCols=["score2"], outputCol="features")
 
-            elif self.b == 0:
+            elif self.b == 0 or self.b == "0":
                 featurizer = VectorAssembler(inputCols=["score"], outputCol="features")
 
             else:
