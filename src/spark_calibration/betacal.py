@@ -1,105 +1,159 @@
+import os
+import json
+import tempfile
+from typing import Optional
+
 import pyspark.sql.functions as F
-
-from pyspark.sql.types import DoubleType
-
+from pyspark.sql import DataFrame
 from pyspark.ml.classification import LogisticRegression
 from pyspark.ml.feature import VectorAssembler
-from pyspark.sql.types import DoubleType
-
-from pyspark.sql.dataframe import DataFrame
 
 
 class Betacal:
-    def __init__(self, parameters):
-        assert parameters == "abm"
+    """
+    Beta calibration using a logistic transformation of raw model scores.
 
+    Formula:
+        logit = a * log(score) + b * log(1 - score) + c
+        prediction = 1 / (1 + exp(-logit))
+
+    Attributes:
+        a (float): Coefficient for log(score)
+        b (float): Coefficient for log(1 - score)
+        c (float): Intercept
+    """
+    EPSILON = 1e-12
+
+    def __init__(self, parameters: str = "abm"):
+        assert parameters == "abm", "Only 'abm' parameterization is supported."
         self.parameters = parameters
-        self.a = None
-        self.b = None
-        self.lr_model = None
+        self.a: Optional[float] = None
+        self.b: Optional[float] = None
+        self.c: Optional[float] = None
 
-    def fit(self, df: DataFrame):
-        assert (
-            "score" in df.columns and "label" in df.columns
-        ), "score and label columns should be present in the dataframe"
+    def _log_expr(self, col: F.Column) -> F.Column:
+        """Numerically stable log transformation."""
+        return F.log(F.when(col < self.EPSILON, self.EPSILON).otherwise(col))
 
-        if self.parameters == "abm":
-            df = df.withColumn("score2", 1 - F.col("score"))
-            df = df.withColumn("score", F.log("score")).withColumn(
-                "score2", -1 * F.log("score2")
-            )
-            lr = LogisticRegression()
-            featurizer = VectorAssembler(
-                inputCols=["score", "score2"], outputCol="features"
-            )
+    def fit(self, df: DataFrame, score_col: str = "score", label_col: str = "label") -> None:
+        """
+        Fit a beta calibration model using logistic regression.
 
-            train_data = featurizer.transform(df)["label", "features"]
+        Args:
+            df (DataFrame): Input dataframe.
+            score_col (str): Column containing raw model scores.
+            label_col (str): Column containing binary labels.
+        """
+        assert score_col in df.columns and label_col in df.columns, \
+            f"Columns {score_col} and {label_col} must be present."
 
-            lr_fitted = lr.fit(train_data)
+        log_score = self._log_expr(F.col(score_col))
+        log_one_minus_score = self._log_expr(1 - F.col(score_col))
 
-            lr_coef = lr_fitted.coefficients
+        df_transformed = df.select(
+            F.col(label_col).alias("label"),
+            log_score.alias("log_score"),
+            (-1 * log_one_minus_score).alias("log_score_complement")
+        )
 
-            if lr_coef[0] < 0:
-                featurizer = VectorAssembler(inputCols=["score2"], outputCol="features")
-                train_data = featurizer.transform(df)["label", "features"]
-                lr_fitted = lr.fit(train_data)
-                a = 0
-                b = lr_fitted.coefficients[0]
+        assembler = VectorAssembler(inputCols=["log_score", "log_score_complement"], outputCol="features")
+        train_data = assembler.transform(df_transformed).select("label", "features")
 
-            elif lr_coef[1] < 0:
-                featurizer = VectorAssembler(inputCols=["score"], outputCol="features")
-                train_data = featurizer.transform(df)["label", "features"]
-                lr_fitted = lr.fit(train_data)
-                b = 0
-                a = lr_fitted.coefficients[0]
-            else:
-                a = lr_coef[0]
-                b = lr_coef[1]
+        lr = LogisticRegression()
+        model = lr.fit(train_data)
+        coef = model.coefficients
 
-            self.a = a
-            self.b = b
-            self.lr_model = lr_fitted
+        # Check if both coefficients are valid
+        if coef[0] < 0:
+            assembler = VectorAssembler(inputCols=["log_score_complement"], outputCol="features")
+            train_data = assembler.transform(df_transformed).select("label", "features")
+            model = lr.fit(train_data)
+            self.a = 0.0
+            self.b = float(model.coefficients[0])
+        elif coef[1] < 0:
+            assembler = VectorAssembler(inputCols=["log_score"], outputCol="features")
+            train_data = assembler.transform(df_transformed).select("label", "features")
+            model = lr.fit(train_data)
+            self.a = float(model.coefficients[0])
+            self.b = 0.0
+        else:
+            self.a = float(coef[0])
+            self.b = float(coef[1])
 
-    def predict(self, df: DataFrame):
-        cols = df.columns
+        self.c = float(model.intercept)
 
-        assert "score" in cols, "score column should be present in the dataframe"
+    def predict(self, df: DataFrame, score_col: str = "score") -> DataFrame:
+        """
+        Apply the learned beta calibration model to predict calibrated scores.
 
-        if self.parameters == "abm":
+        Args:
+            df (DataFrame): Input dataframe with raw scores.
+            score_col (str): Column name for raw score.
 
-            def pick_value(v):
-                return float(v[1])
+        Returns:
+            DataFrame: Original dataframe with an added 'prediction' column.
 
-            pick_value = F.udf(pick_value, DoubleType())
+        Raises:
+            ValueError: If calibration coefficients are not set.
+        """
+        if self.a is None or self.b is None or self.c is None:
+            raise ValueError("Model coefficients a, b, and c must be set. Call `.fit()` or `.load()` before prediction.")
 
-            df = df.withColumn("orig_score", F.col("score"))
+        assert score_col in df.columns, f"{score_col} must be present."
 
-            df = df.withColumn("score2", 1 - F.col("score"))
+        log_score = self._log_expr(F.col(score_col))
+        log_one_minus_score = self._log_expr(1 - F.col(score_col))
 
-            df = df.withColumn("score", F.log("score")).withColumn(
-                "score2", -1 * F.log("score2")
-            )
+        logit = (
+            F.lit(self.a) * log_score +
+            F.lit(self.b) * (-1 * log_one_minus_score) +
+            F.lit(self.c)
+        )
+        prediction = 1 / (1 + F.exp(-logit))
+        return df.withColumn("prediction", prediction)
 
-            if self.a == 0:
-                featurizer = VectorAssembler(inputCols=["score2"], outputCol="features")
+    def save(self, path: Optional[str] = None, prefix: str = "betacal_") -> str:
+        """
+        Save the model coefficients to disk.
 
-            elif self.b == 0:
-                featurizer = VectorAssembler(inputCols=["score"], outputCol="features")
+        Args:
+            path (str, optional): Directory to save into. Creates temp dir if None.
+            prefix (str): Prefix for temp folder name if path is None.
 
-            else:
-                featurizer = VectorAssembler(
-                    inputCols=["score", "score2"], outputCol="features"
-                )
+        Returns:
+            str: The final save path.
+        """
+        if path is None:
+            path = tempfile.mkdtemp(prefix=prefix)
 
-            test_data = featurizer.transform(df)
+        os.makedirs(path, exist_ok=True)
 
-            df = (
-                self.lr_model.transform(test_data)
-                .withColumn("prediction", pick_value("probability"))
-                .drop("score")
-                .withColumnRenamed("orig_score", "score")
-            )
+        with open(os.path.join(path, "coeffs.json"), "w") as f:
+            json.dump({
+                "a": self.a,
+                "b": self.b,
+                "c": self.c,
+                "parameters": self.parameters
+            }, f)
 
-            df = df.select(cols + ["prediction"])
+        return path
 
-            return df
+    @classmethod
+    def load(cls, path: str) -> "Betacal":
+        """
+        Load model coefficients from disk.
+
+        Args:
+            path (str): Directory containing 'coeffs.json'.
+
+        Returns:
+            Betacal: The loaded model.
+        """
+        with open(os.path.join(path, "coeffs.json"), "r") as f:
+            coeffs = json.load(f)
+
+        model = cls(parameters=coeffs["parameters"])
+        model.a = coeffs["a"]
+        model.b = coeffs["b"]
+        model.c = coeffs["c"]
+        return model
