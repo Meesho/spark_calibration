@@ -1,12 +1,12 @@
-import os
 import json
+import os
 import tempfile
 from typing import Optional
 
 import pyspark.sql.functions as F
-from pyspark.sql import DataFrame
 from pyspark.ml.classification import LogisticRegression
 from pyspark.ml.feature import VectorAssembler
+from pyspark.sql import DataFrame
 
 
 class Betacal:
@@ -22,6 +22,7 @@ class Betacal:
         b (float): Coefficient for log(1 - score)
         c (float): Intercept
     """
+
     EPSILON = 1e-12
 
     def __init__(self, parameters: str = "abm"):
@@ -35,7 +36,9 @@ class Betacal:
         """Numerically stable log transformation."""
         return F.log(F.when(col < self.EPSILON, self.EPSILON).otherwise(col))
 
-    def fit(self, df: DataFrame, score_col: str = "score", label_col: str = "label") -> None:
+    def fit(
+        self, df: DataFrame, score_col: str = "score", label_col: str = "label"
+    ) -> None:
         """
         Fit a beta calibration model using logistic regression.
 
@@ -44,8 +47,9 @@ class Betacal:
             score_col (str): Column containing raw model scores.
             label_col (str): Column containing binary labels.
         """
-        assert score_col in df.columns and label_col in df.columns, \
-            f"Columns {score_col} and {label_col} must be present."
+        assert (
+            score_col in df.columns and label_col in df.columns
+        ), f"Columns {score_col} and {label_col} must be present."
 
         log_score = self._log_expr(F.col(score_col))
         log_one_minus_score = self._log_expr(1 - F.col(score_col))
@@ -53,10 +57,12 @@ class Betacal:
         df_transformed = df.select(
             F.col(label_col).alias("label"),
             log_score.alias("log_score"),
-            (-1 * log_one_minus_score).alias("log_score_complement")
+            (-1 * log_one_minus_score).alias("log_score_complement"),
         )
 
-        assembler = VectorAssembler(inputCols=["log_score", "log_score_complement"], outputCol="features")
+        assembler = VectorAssembler(
+            inputCols=["log_score", "log_score_complement"], outputCol="features"
+        )
         train_data = assembler.transform(df_transformed).select("label", "features")
 
         lr = LogisticRegression()
@@ -65,7 +71,9 @@ class Betacal:
 
         # Check if both coefficients are valid
         if coef[0] < 0:
-            assembler = VectorAssembler(inputCols=["log_score_complement"], outputCol="features")
+            assembler = VectorAssembler(
+                inputCols=["log_score_complement"], outputCol="features"
+            )
             train_data = assembler.transform(df_transformed).select("label", "features")
             model = lr.fit(train_data)
             self.a = 0.0
@@ -97,7 +105,9 @@ class Betacal:
             ValueError: If calibration coefficients are not set.
         """
         if self.a is None or self.b is None or self.c is None:
-            raise ValueError("Model coefficients a, b, and c must be set. Call `.fit()` or `.load()` before prediction.")
+            raise ValueError(
+                "Model coefficients a, b, and c must be set. Call `.fit()` or `.load()` before prediction."
+            )
 
         assert score_col in df.columns, f"{score_col} must be present."
 
@@ -105,9 +115,9 @@ class Betacal:
         log_one_minus_score = self._log_expr(1 - F.col(score_col))
 
         logit = (
-            F.lit(self.a) * log_score +
-            F.lit(self.b) * (-1 * log_one_minus_score) +
-            F.lit(self.c)
+            F.lit(self.a) * log_score
+            + F.lit(self.b) * (-1 * log_one_minus_score)
+            + F.lit(self.c)
         )
         prediction = 1 / (1 + F.exp(-logit))
         return df.withColumn("prediction", prediction)
@@ -129,12 +139,10 @@ class Betacal:
         os.makedirs(path, exist_ok=True)
 
         with open(os.path.join(path, "coeffs.json"), "w") as f:
-            json.dump({
-                "a": self.a,
-                "b": self.b,
-                "c": self.c,
-                "parameters": self.parameters
-            }, f)
+            json.dump(
+                {"a": self.a, "b": self.b, "c": self.c, "parameters": self.parameters},
+                f,
+            )
 
         return path
 
