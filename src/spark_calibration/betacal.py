@@ -144,7 +144,7 @@ class Betacal:
 
     def fit(
         self, df: DataFrame, score_col: str = "score", label_col: str = "label"
-    ) -> None:
+    ) -> "Betacal":
         """
         Fit a beta calibration model using logistic regression.
 
@@ -153,6 +153,9 @@ class Betacal:
             score_col (str): Column containing raw model scores.
             label_col (str): Column containing binary labels.
 
+        Returns:
+            Betacal: The fitted model instance (self).
+
         Raises:
             ValueError: If input DataFrame is empty or contains all null values.
         """
@@ -160,6 +163,7 @@ class Betacal:
         df_clean = self._handle_null_values(df, score_col)
         train_data = self._prepare_features(df_clean, score_col, label_col)
         self._fit_logistic_regression(train_data)
+        return self
 
     def predict(self, df: DataFrame, score_col: str = "score") -> DataFrame:
         """
