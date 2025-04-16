@@ -36,21 +36,70 @@ class Betacal:
         """Numerically stable log transformation."""
         return F.log(F.when(col < self.EPSILON, self.EPSILON).otherwise(col))
 
-    def fit(
-        self, df: DataFrame, score_col: str = "score", label_col: str = "label"
+    def _validate_input_df(
+        self, df: DataFrame, score_col: str, label_col: str
     ) -> None:
         """
-        Fit a beta calibration model using logistic regression.
+        Validate input DataFrame and required columns.
 
         Args:
             df (DataFrame): Input dataframe.
             score_col (str): Column containing raw model scores.
             label_col (str): Column containing binary labels.
+
+        Raises:
+            ValueError: If DataFrame is empty or required columns are missing.
         """
+        if df.count() == 0:
+            raise ValueError("Cannot fit model on empty DataFrame")
+
         assert (
             score_col in df.columns and label_col in df.columns
         ), f"Columns {score_col} and {label_col} must be present."
 
+    def _handle_null_values(
+        self, df: DataFrame, score_col: str
+    ) -> DataFrame:
+        """
+        Handle null values in the score column.
+
+        Args:
+            df (DataFrame): Input dataframe.
+            score_col (str): Column containing raw model scores.
+
+        Returns:
+            DataFrame: Cleaned DataFrame with null values removed.
+
+        Raises:
+            ValueError: If all rows contain null values.
+        """
+        total_rows = df.count()
+        df_clean = df.dropna(subset=[score_col])
+        rows_after_drop = df_clean.count()
+        
+        dropped_rows = total_rows - rows_after_drop
+        if dropped_rows > 0:
+            print(f"Dropped {dropped_rows} rows with null values in {score_col} column")
+        
+        if rows_after_drop == 0:
+            raise ValueError(f"All rows contained null values in {score_col} column")
+            
+        return df_clean
+
+    def _prepare_features(
+        self, df: DataFrame, score_col: str, label_col: str
+    ) -> DataFrame:
+        """
+        Prepare features for logistic regression.
+
+        Args:
+            df (DataFrame): Input dataframe.
+            score_col (str): Column containing raw model scores.
+            label_col (str): Column containing binary labels.
+
+        Returns:
+            DataFrame: Transformed DataFrame with features ready for training.
+        """
         log_score = self._log_expr(F.col(score_col))
         log_one_minus_score = self._log_expr(1 - F.col(score_col))
 
@@ -63,8 +112,15 @@ class Betacal:
         assembler = VectorAssembler(
             inputCols=["log_score", "log_score_complement"], outputCol="features"
         )
-        train_data = assembler.transform(df_transformed).select("label", "features")
+        return assembler.transform(df_transformed).select("label", "features")
 
+    def _fit_logistic_regression(self, train_data: DataFrame) -> None:
+        """
+        Fit logistic regression model and set coefficients.
+
+        Args:
+            train_data (DataFrame): Prepared training data with features.
+        """
         lr = LogisticRegression()
         model = lr.fit(train_data)
         coef = model.coefficients
@@ -74,13 +130,13 @@ class Betacal:
             assembler = VectorAssembler(
                 inputCols=["log_score_complement"], outputCol="features"
             )
-            train_data = assembler.transform(df_transformed).select("label", "features")
+            train_data = assembler.transform(train_data).select("label", "features")
             model = lr.fit(train_data)
             self.a = 0.0
             self.b = float(model.coefficients[0])
         elif coef[1] < 0:
             assembler = VectorAssembler(inputCols=["log_score"], outputCol="features")
-            train_data = assembler.transform(df_transformed).select("label", "features")
+            train_data = assembler.transform(train_data).select("label", "features")
             model = lr.fit(train_data)
             self.a = float(model.coefficients[0])
             self.b = 0.0
@@ -89,6 +145,25 @@ class Betacal:
             self.b = float(coef[1])
 
         self.c = float(model.intercept)
+
+    def fit(
+        self, df: DataFrame, score_col: str = "score", label_col: str = "label"
+    ) -> None:
+        """
+        Fit a beta calibration model using logistic regression.
+
+        Args:
+            df (DataFrame): Input dataframe.
+            score_col (str): Column containing raw model scores.
+            label_col (str): Column containing binary labels.
+
+        Raises:
+            ValueError: If input DataFrame is empty or contains all null values.
+        """
+        self._validate_input_df(df, score_col, label_col)
+        df_clean = self._handle_null_values(df, score_col)
+        train_data = self._prepare_features(df_clean, score_col, label_col)
+        self._fit_logistic_regression(train_data)
 
     def predict(self, df: DataFrame, score_col: str = "score") -> DataFrame:
         """
