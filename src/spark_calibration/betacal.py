@@ -36,9 +36,7 @@ class Betacal:
         """Numerically stable log transformation."""
         return F.log(F.when(col < self.EPSILON, self.EPSILON).otherwise(col))
 
-    def _validate_input_df(
-        self, df: DataFrame, score_col: str, label_col: str
-    ) -> None:
+    def _validate_input_df(self, df: DataFrame, score_col: str, label_col: str) -> None:
         """
         Validate input DataFrame and required columns.
 
@@ -57,9 +55,7 @@ class Betacal:
             score_col in df.columns and label_col in df.columns
         ), f"Columns {score_col} and {label_col} must be present."
 
-    def _handle_null_values(
-        self, df: DataFrame, score_col: str
-    ) -> DataFrame:
+    def _handle_null_values(self, df: DataFrame, score_col: str) -> DataFrame:
         """
         Handle null values in the score column.
 
@@ -76,14 +72,14 @@ class Betacal:
         total_rows = df.count()
         df_clean = df.dropna(subset=[score_col])
         rows_after_drop = df_clean.count()
-        
+
         dropped_rows = total_rows - rows_after_drop
         if dropped_rows > 0:
             print(f"Dropped {dropped_rows} rows with null values in {score_col} column")
-        
+
         if rows_after_drop == 0:
             raise ValueError(f"All rows contained null values in {score_col} column")
-            
+
         return df_clean
 
     def _prepare_features(
