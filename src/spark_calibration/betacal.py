@@ -32,6 +32,15 @@ class Betacal:
         self.b: Optional[float] = None
         self.c: Optional[float] = None
 
+    def get_params(self) -> dict:
+        """
+        Get the model parameters.
+
+        Returns:
+            dict: Dictionary containing model parameters a, b, c.
+        """
+        return {"a": self.a, "b": self.b, "c": self.c, "parameters": self.parameters}
+
     def _log_expr(self, col: F.Column) -> F.Column:
         """Numerically stable log transformation."""
         return F.log(F.when(col < self.EPSILON, self.EPSILON).otherwise(col))
@@ -142,6 +151,26 @@ class Betacal:
 
         self.c = float(model.intercept)
 
+    def _validate_score_range(self, df: DataFrame, score_col: str) -> None:
+        """
+        Validate that scores are within valid range (0,1).
+
+        Args:
+            df (DataFrame): Input dataframe.
+            score_col (str): Column containing raw model scores.
+
+        Raises:
+            ValueError: If scores are outside valid range.
+        """
+        stats = df.select(
+            F.min(score_col).alias("min"), F.max(score_col).alias("max")
+        ).collect()[0]
+
+        if stats.min < 0 or stats.max > 1:
+            raise ValueError(
+                f"Scores must be in range [0,1], got range [{stats.min:.3f}, {stats.max:.3f}]"
+            )
+
     def fit(
         self, df: DataFrame, score_col: str = "score", label_col: str = "label"
     ) -> "Betacal":
@@ -160,24 +189,32 @@ class Betacal:
             ValueError: If input DataFrame is empty or contains all null values.
         """
         self._validate_input_df(df, score_col, label_col)
+        self._validate_score_range(df, score_col)
         df_clean = self._handle_null_values(df, score_col)
         train_data = self._prepare_features(df_clean, score_col, label_col)
         self._fit_logistic_regression(train_data)
         return self
 
-    def predict(self, df: DataFrame, score_col: str = "score") -> DataFrame:
+    def predict(
+        self,
+        df: DataFrame,
+        score_col: str = "score",
+        prediction_col: str = "prediction",
+    ) -> DataFrame:
         """
         Apply the learned beta calibration model to predict calibrated scores.
 
         Args:
             df (DataFrame): Input dataframe with raw scores.
             score_col (str): Column name for raw score.
+            prediction_col (str): Name for the output prediction column.
 
         Returns:
-            DataFrame: Original dataframe with an added 'prediction' column.
+            DataFrame: Original dataframe with an added prediction column.
+            Null values in score_col will result in null predictions.
 
         Raises:
-            ValueError: If calibration coefficients are not set.
+            ValueError: If calibration coefficients are not set or scores are outside valid range.
         """
         if self.a is None or self.b is None or self.c is None:
             raise ValueError(
@@ -185,6 +222,8 @@ class Betacal:
             )
 
         assert score_col in df.columns, f"{score_col} must be present."
+
+        self._validate_score_range(df.filter(F.col(score_col).isNotNull()), score_col)
 
         log_score = self._log_expr(F.col(score_col))
         log_one_minus_score = self._log_expr(1 - F.col(score_col))
@@ -194,8 +233,12 @@ class Betacal:
             + F.lit(self.b) * (-1 * log_one_minus_score)
             + F.lit(self.c)
         )
-        prediction = 1 / (1 + F.exp(-logit))
-        return df.withColumn("prediction", prediction)
+
+        prediction = F.when(F.col(score_col).isNull(), None).otherwise(
+            1 / (1 + F.exp(-logit))
+        )
+
+        return df.withColumn(prediction_col, prediction)
 
     def save(self, path: Optional[str] = None, prefix: str = "betacal_") -> str:
         """
