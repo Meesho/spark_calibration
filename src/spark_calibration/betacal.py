@@ -118,7 +118,7 @@ class Betacal:
         self, df: DataFrame, score_col: str, label_col: str
     ) -> DataFrame:
         """
-        Prepare features for logistic regression.
+        Prepare features for logistic regression with all possible combinations.
 
         Args:
             df (DataFrame): Input dataframe.
@@ -127,6 +127,10 @@ class Betacal:
 
         Returns:
             DataFrame: Transformed DataFrame with features ready for training.
+            Contains three feature vectors:
+            - features_both: Both log(score) and -log(1-score)
+            - features_score: Only log(score)
+            - features_complement: Only -log(1-score)
         """
         log_score = self._log_expr(F.col(score_col))
         log_one_minus_score = self._log_expr(1 - F.col(score_col))
@@ -137,10 +141,20 @@ class Betacal:
             (-1 * log_one_minus_score).alias("log_score_complement"),
         )
 
-        assembler = VectorAssembler(
-            inputCols=["log_score", "log_score_complement"], outputCol="features"
+        # Prepare all possible feature combinations
+        assembler_both = VectorAssembler(
+            inputCols=["log_score", "log_score_complement"], outputCol="features_both"
         )
-        return assembler.transform(df_transformed)
+        assembler_score = VectorAssembler(
+            inputCols=["log_score"], outputCol="features_score"
+        )
+        assembler_complement = VectorAssembler(
+            inputCols=["log_score_complement"], outputCol="features_complement"
+        )
+
+        df_with_both = assembler_both.transform(df_transformed)
+        df_with_score = assembler_score.transform(df_with_both)
+        return assembler_complement.transform(df_with_score)
 
     def _fit_logistic_regression(self, train_data: DataFrame) -> None:
         """
@@ -150,22 +164,27 @@ class Betacal:
             train_data (DataFrame): Prepared training data with features.
         """
         lr = LogisticRegression()
-        model = lr.fit(train_data)
+
+        # First try with both features
+        model = lr.fit(
+            train_data.select("label", F.col("features_both").alias("features"))
+        )
         coef = model.coefficients
 
-        # Check if both coefficients are valid
         if coef[0] < 0:
-            assembler = VectorAssembler(
-                inputCols=["log_score_complement"], outputCol="features"
+            # Use only complement feature if first coefficient is negative
+            model = lr.fit(
+                train_data.select(
+                    "label", F.col("features_complement").alias("features")
+                )
             )
-            train_data = assembler.transform(train_data).select("label", "features")
-            model = lr.fit(train_data)
             self.a = 0.0
             self.b = float(model.coefficients[0])
         elif coef[1] < 0:
-            assembler = VectorAssembler(inputCols=["log_score"], outputCol="features")
-            train_data = assembler.transform(train_data).select("label", "features")
-            model = lr.fit(train_data)
+            # Use only score feature if second coefficient is negative
+            model = lr.fit(
+                train_data.select("label", F.col("features_score").alias("features"))
+            )
             self.a = float(model.coefficients[0])
             self.b = 0.0
         else:
