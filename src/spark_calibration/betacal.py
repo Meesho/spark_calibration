@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import tempfile
 from typing import Optional
@@ -7,6 +8,25 @@ import pyspark.sql.functions as F
 from pyspark.ml.classification import LogisticRegression
 from pyspark.ml.feature import VectorAssembler
 from pyspark.sql import DataFrame
+
+
+def get_logger():
+    """Configure logger for Spark environment."""
+    logger = logging.getLogger(__name__)
+
+    if not logger.handlers:
+        handler = logging.StreamHandler()
+        formatter = logging.Formatter(
+            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        )
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+        logger.setLevel(logging.INFO)
+
+    return logger
+
+
+logger = get_logger()
 
 
 class Betacal:
@@ -82,12 +102,15 @@ class Betacal:
         df_clean = df.dropna(subset=[score_col])
         rows_after_drop = df_clean.count()
 
-        dropped_rows = total_rows - rows_after_drop
-        if dropped_rows > 0:
-            print(f"Dropped {dropped_rows} rows with null values in {score_col} column")
-
         if rows_after_drop == 0:
             raise ValueError(f"All rows contained null values in {score_col} column")
+
+        dropped_rows = total_rows - rows_after_drop
+        if dropped_rows > 0:
+            logger.info(
+                f"Dropped {dropped_rows}/{total_rows} rows ({(dropped_rows/total_rows)*100:.2f}%) "
+                f"with null values in column '{score_col}'"
+            )
 
         return df_clean
 
@@ -117,7 +140,7 @@ class Betacal:
         assembler = VectorAssembler(
             inputCols=["log_score", "log_score_complement"], outputCol="features"
         )
-        return assembler.transform(df_transformed).select("label", "features")
+        return assembler.transform(df_transformed)
 
     def _fit_logistic_regression(self, train_data: DataFrame) -> None:
         """
