@@ -66,7 +66,11 @@ class Betacal:
         return F.log(F.when(col < self.EPSILON, self.EPSILON).otherwise(col))
 
     def _validate_input_df(
-        self, df: DataFrame, score_col: str, label_col: str, weight_col: Optional[str] = None
+        self,
+        df: DataFrame,
+        score_col: str,
+        label_col: str,
+        weight_col: Optional[str] = None,
     ) -> None:
         """
         Validate input DataFrame and required columns.
@@ -86,9 +90,11 @@ class Betacal:
         assert (
             score_col in df.columns and label_col in df.columns
         ), f"Columns {score_col} and {label_col} must be present."
-        
+
         if weight_col is not None:
-            assert weight_col in df.columns, f"Column {weight_col} must be present when weight_col is provided."
+            assert (
+                weight_col in df.columns
+            ), f"Column {weight_col} must be present when weight_col is provided."
 
     def _handle_null_values(
         self, df: DataFrame, score_col: str, weight_col: Optional[str] = None
@@ -111,7 +117,7 @@ class Betacal:
         drop_cols = [score_col]
         if weight_col is not None:
             drop_cols.append(weight_col)
-        
+
         df_clean = df.dropna(subset=drop_cols)
         rows_after_drop = df_clean.count()
 
@@ -128,7 +134,11 @@ class Betacal:
         return df_clean
 
     def _prepare_features(
-        self, df: DataFrame, score_col: str, label_col: str, weight_col: Optional[str] = None
+        self,
+        df: DataFrame,
+        score_col: str,
+        label_col: str,
+        weight_col: Optional[str] = None,
     ) -> DataFrame:
         """
         Prepare features for logistic regression with all possible combinations.
@@ -155,7 +165,7 @@ class Betacal:
             log_score.alias("log_score"),
             (-1 * log_one_minus_score).alias("log_score_complement"),
         ]
-        
+
         if weight_col is not None:
             select_cols.append(F.col(weight_col).alias("weight"))
 
@@ -176,7 +186,9 @@ class Betacal:
         df_with_score = assembler_score.transform(df_with_both)
         return assembler_complement.transform(df_with_score)
 
-    def _fit_logistic_regression(self, train_data: DataFrame, use_weights: bool = False) -> None:
+    def _fit_logistic_regression(
+        self, train_data: DataFrame, use_weights: bool = False
+    ) -> None:
         """
         Fit logistic regression model and set coefficients.
 
@@ -192,7 +204,7 @@ class Betacal:
         select_cols = ["label", F.col("features_both").alias("features")]
         if use_weights:
             select_cols.append("weight")
-        
+
         model = lr.fit(train_data.select(*select_cols))
         coef = model.coefficients
 
@@ -201,7 +213,7 @@ class Betacal:
             select_cols = ["label", F.col("features_complement").alias("features")]
             if use_weights:
                 select_cols.append("weight")
-            
+
             model = lr.fit(train_data.select(*select_cols))
             self.a = 0.0
             self.b = float(model.coefficients[0])
@@ -210,7 +222,7 @@ class Betacal:
             select_cols = ["label", F.col("features_score").alias("features")]
             if use_weights:
                 select_cols.append("weight")
-            
+
             model = lr.fit(train_data.select(*select_cols))
             self.a = float(model.coefficients[0])
             self.b = 0.0
@@ -266,10 +278,10 @@ class Betacal:
         self._validate_input_df(df, score_col, label_col, weight_col)
         self._validate_score_range(df, score_col)
         df_clean = self._handle_null_values(df, score_col, weight_col)
-        
+
         # Map weight_col to "weight" in prepared features
         train_data = self._prepare_features(df_clean, score_col, label_col, weight_col)
-        
+
         # Use weights if weight_col was provided (weight column is always named "weight" after preparation)
         self._fit_logistic_regression(train_data, use_weights=(weight_col is not None))
         return self
