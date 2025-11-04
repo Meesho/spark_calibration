@@ -176,22 +176,22 @@ class Betacal:
         df_with_score = assembler_score.transform(df_with_both)
         return assembler_complement.transform(df_with_score)
 
-    def _fit_logistic_regression(self, train_data: DataFrame, weight_col: Optional[str] = None) -> None:
+    def _fit_logistic_regression(self, train_data: DataFrame, use_weights: bool = False) -> None:
         """
         Fit logistic regression model and set coefficients.
 
         Args:
             train_data (DataFrame): Prepared training data with features.
-            weight_col (str, optional): Column name for sample weights in train_data.
+            use_weights (bool): Whether to use sample weights (weight column must be "weight").
         """
         lr = LogisticRegression()
-        if weight_col is not None:
-            lr.setWeightCol(weight_col)
+        if use_weights:
+            lr.setWeightCol("weight")
 
         # First try with both features
         select_cols = ["label", F.col("features_both").alias("features")]
-        if weight_col is not None:
-            select_cols.append(weight_col)
+        if use_weights:
+            select_cols.append("weight")
         
         model = lr.fit(train_data.select(*select_cols))
         coef = model.coefficients
@@ -199,8 +199,8 @@ class Betacal:
         if coef[0] < 0:
             # Use only complement feature if first coefficient is negative
             select_cols = ["label", F.col("features_complement").alias("features")]
-            if weight_col is not None:
-                select_cols.append(weight_col)
+            if use_weights:
+                select_cols.append("weight")
             
             model = lr.fit(train_data.select(*select_cols))
             self.a = 0.0
@@ -208,8 +208,8 @@ class Betacal:
         elif coef[1] < 0:
             # Use only score feature if second coefficient is negative
             select_cols = ["label", F.col("features_score").alias("features")]
-            if weight_col is not None:
-                select_cols.append(weight_col)
+            if use_weights:
+                select_cols.append("weight")
             
             model = lr.fit(train_data.select(*select_cols))
             self.a = float(model.coefficients[0])
@@ -270,9 +270,8 @@ class Betacal:
         # Map weight_col to "weight" in prepared features
         train_data = self._prepare_features(df_clean, score_col, label_col, weight_col)
         
-        # Use "weight" as the weight column name in train_data (if weights were provided)
-        weight_col_name = "weight" if weight_col is not None else None
-        self._fit_logistic_regression(train_data, weight_col_name)
+        # Use weights if weight_col was provided (weight column is always named "weight" after preparation)
+        self._fit_logistic_regression(train_data, use_weights=(weight_col is not None))
         return self
 
     def predict(
