@@ -21,6 +21,7 @@ pip install spark-calibration
 train_df should be a pyspark dataframe containing:
 - A column with raw model scores (default name: `score`)
 - A column with binary labels (default name: `label`)
+- (Optional) A column with sample weights (default name: `weight`)
 
 You can specify different column names when calling `fit()`. In some tree-based models like LightGBM, the predicted scores may fall outside the [0, 1] range and can even be negative. Please apply a sigmoid function to normalize the outputs accordingly.
 
@@ -41,8 +42,15 @@ bc.fit(train_df)
 # Or specify custom column names
 # bc.fit(train_df, score_col="raw_score", label_col="actual_label")
 
+# Fit with sample weights (optional)
+# bc.fit(train_df, weight_col="sample_weight")
+
 # Access model parameters
 print(f"Model coefficients: a={bc.a}, b={bc.b}, c={bc.c}")
+
+# Or use get_params() method
+params = bc.get_params()
+print(f"Model parameters: {params}")
 ```
 
 The model learns three parameters:
