@@ -7,6 +7,7 @@ from typing import Optional
 import pyspark.sql.functions as F
 from pyspark.ml.classification import LogisticRegression
 from pyspark.ml.feature import VectorAssembler
+from pyspark.ml.linalg import Matrices
 from pyspark.sql import DataFrame
 
 
@@ -141,7 +142,7 @@ class Betacal:
         weight_col: Optional[str] = None,
     ) -> DataFrame:
         """
-        Prepare features for logistic regression with all possible combinations.
+        Prepare features for logistic regression.
 
         Args:
             df (DataFrame): Input dataframe.
@@ -151,10 +152,9 @@ class Betacal:
 
         Returns:
             DataFrame: Transformed DataFrame with features ready for training.
-            Contains three feature vectors:
-            - features_both: Both log(score) and -log(1-score)
-            - features_score: Only log(score)
-            - features_complement: Only -log(1-score)
+            Contains:
+            - label: Binary labels
+            - features: Vector of [log_score, log_score_complement]
             - weight: Sample weights (if weight_col is provided)
         """
         log_score = self._log_expr(F.col(score_col))
@@ -171,65 +171,45 @@ class Betacal:
 
         df_transformed = df.select(*select_cols)
 
-        # Prepare all possible feature combinations
-        assembler_both = VectorAssembler(
-            inputCols=["log_score", "log_score_complement"], outputCol="features_both"
-        )
-        assembler_score = VectorAssembler(
-            inputCols=["log_score"], outputCol="features_score"
-        )
-        assembler_complement = VectorAssembler(
-            inputCols=["log_score_complement"], outputCol="features_complement"
+        # Create feature vector with both log_score and log_score_complement
+        assembler = VectorAssembler(
+            inputCols=["log_score", "log_score_complement"], outputCol="features"
         )
 
-        df_with_both = assembler_both.transform(df_transformed)
-        df_with_score = assembler_score.transform(df_with_both)
-        return assembler_complement.transform(df_with_score)
+        return assembler.transform(df_transformed)
 
     def _fit_logistic_regression(
         self, train_data: DataFrame, use_weights: bool = False
     ) -> None:
         """
-        Fit logistic regression model and set coefficients.
+        Fit logistic regression model with coefficient and intercept constraints.
 
         Args:
             train_data (DataFrame): Prepared training data with features.
             use_weights (bool): Whether to use sample weights (weight column must be "weight").
         """
-        lr = LogisticRegression()
+        # Set bounds:
+        # a: [0.0, +inf)
+        # b: [0.0, +inf)
+        # c: [-inf, +inf]
+        lower_bounds_coef = Matrices.dense(1, 2, [0.0, 0.0])
+
+        lr = LogisticRegression(
+            lowerBoundsOnCoefficients=lower_bounds_coef,
+        )
+
         if use_weights:
             lr.setWeightCol("weight")
 
-        # First try with both features
-        select_cols = ["label", F.col("features_both").alias("features")]
+        select_cols = ["label", "features"]
         if use_weights:
             select_cols.append("weight")
 
         model = lr.fit(train_data.select(*select_cols))
         coef = model.coefficients
 
-        if coef[0] < 0:
-            # Use only complement feature if first coefficient is negative
-            select_cols = ["label", F.col("features_complement").alias("features")]
-            if use_weights:
-                select_cols.append("weight")
-
-            model = lr.fit(train_data.select(*select_cols))
-            self.a = 0.0
-            self.b = float(model.coefficients[0])
-        elif coef[1] < 0:
-            # Use only score feature if second coefficient is negative
-            select_cols = ["label", F.col("features_score").alias("features")]
-            if use_weights:
-                select_cols.append("weight")
-
-            model = lr.fit(train_data.select(*select_cols))
-            self.a = float(model.coefficients[0])
-            self.b = 0.0
-        else:
-            self.a = float(coef[0])
-            self.b = float(coef[1])
-
+        self.a = float(coef[0])
+        self.b = float(coef[1])
         self.c = float(model.intercept)
 
     def _validate_score_range(self, df: DataFrame, score_col: str) -> None:
