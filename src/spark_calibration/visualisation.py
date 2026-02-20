@@ -4,9 +4,12 @@ from pyspark.sql.dataframe import DataFrame
 
 
 def plot_calibration_curve(df: DataFrame):
-    assert (
+    if not (
         "score" in df.columns and "label" in df.columns and "prediction" in df.columns
-    ), "score and label columns should be present in the dataframe"
+    ):
+        raise ValueError(
+            "score, label, and prediction columns must be present in the dataframe"
+        )
 
     df_p_v = df.select("label", "score", "prediction").toPandas().values
 

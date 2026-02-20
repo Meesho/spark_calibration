@@ -47,7 +47,8 @@ class Betacal:
     EPSILON = 1e-12
 
     def __init__(self, parameters: str = "abm"):
-        assert parameters == "abm", "Only 'abm' parameterization is supported."
+        if parameters != "abm":
+            raise ValueError("Only 'abm' parameterization is supported.")
         self.parameters = parameters
         self.a: Optional[float] = None
         self.b: Optional[float] = None
@@ -88,14 +89,13 @@ class Betacal:
         if df.count() == 0:
             raise ValueError("Cannot fit model on empty DataFrame")
 
-        assert (
-            score_col in df.columns and label_col in df.columns
-        ), f"Columns {score_col} and {label_col} must be present."
+        if score_col not in df.columns or label_col not in df.columns:
+            raise ValueError(f"Columns {score_col} and {label_col} must be present.")
 
-        if weight_col is not None:
-            assert (
-                weight_col in df.columns
-            ), f"Column {weight_col} must be present when weight_col is provided."
+        if weight_col is not None and weight_col not in df.columns:
+            raise ValueError(
+                f"Column {weight_col} must be present when weight_col is provided."
+            )
 
     def _handle_null_values(
         self, df: DataFrame, score_col: str, weight_col: Optional[str] = None
@@ -128,7 +128,7 @@ class Betacal:
         dropped_rows = total_rows - rows_after_drop
         if dropped_rows > 0:
             logger.info(
-                f"Dropped {dropped_rows}/{total_rows} rows ({(dropped_rows/total_rows)*100:.2f}%) "
+                f"Dropped {dropped_rows}/{total_rows} rows ({(dropped_rows / total_rows) * 100:.2f}%) "
                 f"with null values in column(s) '{', '.join(drop_cols)}'"
             )
 
@@ -292,7 +292,8 @@ class Betacal:
                 "Model coefficients a, b, and c must be set. Call `.fit()` or `.load()` before prediction."
             )
 
-        assert score_col in df.columns, f"{score_col} must be present."
+        if score_col not in df.columns:
+            raise ValueError(f"{score_col} must be present.")
 
         self._validate_score_range(df.filter(F.col(score_col).isNotNull()), score_col)
 

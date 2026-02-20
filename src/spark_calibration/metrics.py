@@ -1,6 +1,5 @@
 from pyspark.ml.evaluation import BinaryClassificationEvaluator
 import pyspark.sql.functions as F
-
 from pyspark.sql.dataframe import DataFrame
 
 
@@ -11,9 +10,12 @@ def display_classification_calib_metrics(df: DataFrame):
         df: dataframe with score, label and prediction(calibratied score) columns
     """
 
-    assert (
+    if not (
         "score" in df.columns and "label" in df.columns and "prediction" in df.columns
-    ), "score and label columns should be present in the dataframe"
+    ):
+        raise ValueError(
+            "score, label, and prediction columns must be present in the dataframe"
+        )
 
     model_bs = df.select(F.avg(F.pow(df["label"] - df["score"], 2))).collect()[0][0]
     model_ll = df.select(
@@ -34,7 +36,11 @@ def display_classification_calib_metrics(df: DataFrame):
     print(f"model brier score loss: {model_bs}")
     print(f"calibrated model brier score loss: {iso_bs}")
 
-    print(f"delta: {round((iso_bs/model_bs - 1) * 100, 2)}%")
+    print(
+        f"delta: {round((iso_bs / model_bs - 1) * 100, 2)}%"
+        if model_bs
+        else "delta: N/A (baseline is 0)"
+    )
     iso_ll = df.select(
         F.avg(
             -F.col("label") * F.log(F.col("prediction"))
@@ -42,26 +48,38 @@ def display_classification_calib_metrics(df: DataFrame):
         )
     ).collect()[0][0]
 
-    print("")
+    print()
 
     print(f"model log loss: {model_ll}")
     print(f"calibrated model log loss: {iso_ll}")
-    print(f"delta: {round((iso_ll/model_ll - 1) * 100, 2)}%")
+    print(
+        f"delta: {round((iso_ll / model_ll - 1) * 100, 2)}%"
+        if model_ll
+        else "delta: N/A (baseline is 0)"
+    )
     iso_aucpr = BinaryClassificationEvaluator(
         rawPredictionCol="prediction", metricName="areaUnderPR"
     ).evaluate(df)
 
-    print("")
+    print()
 
     print(f"model aucpr: {model_aucpr}")
     print(f"calibrated model aucpr: {iso_aucpr}")
-    print(f"delta: {round((iso_aucpr/model_aucpr - 1) * 100, 2)}%")
+    print(
+        f"delta: {round((iso_aucpr / model_aucpr - 1) * 100, 2)}%"
+        if model_aucpr
+        else "delta: N/A (baseline is 0)"
+    )
     iso_roc_auc = BinaryClassificationEvaluator(
         rawPredictionCol="prediction", metricName="areaUnderROC"
     ).evaluate(df)
 
-    print("")
+    print()
 
     print(f"model roc_auc: {model_roc_auc}")
     print(f"calibrated model roc_auc: {iso_roc_auc}")
-    print(f"delta: {round((iso_roc_auc/model_roc_auc - 1) * 100, 2)}%")
+    print(
+        f"delta: {round((iso_roc_auc / model_roc_auc - 1) * 100, 2)}%"
+        if model_roc_auc
+        else "delta: N/A (baseline is 0)"
+    )
